@@ -3,25 +3,14 @@
 # n8n 2.35.0 + Python + FFmpeg + Edge-TTS
 # =========================================================
 
-# ---------------------------------------------------------
-# ETAPA 1
-# Tomamos el n8n oficial ya construido
-# ---------------------------------------------------------
-
 FROM n8nio/n8n:2.35.0 AS n8n
-
-
-# ---------------------------------------------------------
-# ETAPA 2
-# Imagen final con Node + Python + FFmpeg
-# ---------------------------------------------------------
 
 FROM node:24.18.1-alpine3.24
 
 USER root
 
 # ---------------------------------------------------------
-# Instalar herramientas del sistema
+# Sistema
 # ---------------------------------------------------------
 
 RUN apk add --no-cache \
@@ -34,7 +23,7 @@ RUN apk add --no-cache \
     tzdata
 
 # ---------------------------------------------------------
-# Instalar librerías Python
+# Python
 # ---------------------------------------------------------
 
 RUN pip3 install --no-cache-dir \
@@ -43,30 +32,19 @@ RUN pip3 install --no-cache-dir \
     --break-system-packages
 
 # ---------------------------------------------------------
-# Copiar n8n 2.35.0 desde la imagen oficial
+# n8n
 # ---------------------------------------------------------
 
 COPY --from=n8n \
     /usr/local/lib/node_modules/n8n \
     /usr/local/lib/node_modules/n8n
 
-# ---------------------------------------------------------
-# Copiar el entrypoint oficial de n8n
-# ---------------------------------------------------------
-
-COPY --from=n8n \
-    /docker-entrypoint.sh \
-    /docker-entrypoint.sh
-
-# ---------------------------------------------------------
-# Crear acceso al comando n8n
-# ---------------------------------------------------------
-
+# Crear comando n8n
 RUN mkdir -p /usr/local/bin && \
-    ln -sf /usr/local/lib/node_modules/n8n/bin/n8n /usr/local/bin/n8n
+    ln -s /usr/local/lib/node_modules/n8n/bin/n8n /usr/local/bin/n8n
 
 # ---------------------------------------------------------
-# Directorio para los scripts de Casa Textil
+# Scripts Casa Textil
 # ---------------------------------------------------------
 
 RUN mkdir -p /opt/scripts
@@ -74,23 +52,34 @@ RUN mkdir -p /opt/scripts
 COPY scripts/ /opt/scripts/
 
 # ---------------------------------------------------------
-# Permisos
+# Directorios y permisos
 # ---------------------------------------------------------
 
-RUN chown -R node:node /opt/scripts && \
-    mkdir -p /home/node/.n8n && \
-    chown -R node:node /home/node
+RUN mkdir -p /home/node/.n8n && \
+    chown -R node:node /home/node && \
+    chown -R node:node /opt/scripts && \
+    chmod -R 755 /opt/scripts
 
 # ---------------------------------------------------------
-# Variables necesarias para resolver módulos globales
+# Configuración n8n
 # ---------------------------------------------------------
 
 ENV NODE_ENV=production
 ENV NODE_PATH=/usr/local/lib/node_modules
+ENV N8N_RELEASE_TYPE=stable
+ENV N8N_PORT=10000
+ENV N8N_LISTEN_ADDRESS=0.0.0.0
+ENV PORT=10000
 ENV SHELL=/bin/sh
 
 # ---------------------------------------------------------
-# Verificaciones durante el build
+# Directorio de trabajo oficial de n8n
+# ---------------------------------------------------------
+
+WORKDIR /home/node
+
+# ---------------------------------------------------------
+# Verificaciones
 # ---------------------------------------------------------
 
 RUN node --version && \
@@ -101,21 +90,21 @@ RUN node --version && \
     python3 -c "import edge_tts; print('edge-tts OK')"
 
 # ---------------------------------------------------------
-# Puerto de n8n
+# Puerto
 # ---------------------------------------------------------
 
-EXPOSE 5678
+EXPOSE 10000
 
 # ---------------------------------------------------------
-# Usuario normal de n8n
+# Usuario n8n
 # ---------------------------------------------------------
 
 USER node
 
 # ---------------------------------------------------------
-# Entrypoint oficial
+# Arranque
 # ---------------------------------------------------------
 
-ENTRYPOINT ["tini", "--", "/docker-entrypoint.sh"]
+ENTRYPOINT ["tini", "--", "n8n"]
 
 CMD ["start"]
