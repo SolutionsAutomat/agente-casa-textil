@@ -1,0 +1,3 @@
+Coloca aquí un archivo llamado musica.mp3 (música libre de derechos, suave, de fondo).
+Si no hay archivo, el video se genera solo con la voz en off.
+Fuente sugerida gratis: YouTube Audio Library o Pixabay Music.
