@@ -26,7 +26,7 @@ ENV SHELL=/bin/sh
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         python3 \
-        python3-pip \
+        python3-venv \
         ffmpeg \
         fonts-dejavu \
         tini \
@@ -35,15 +35,27 @@ RUN apt-get update && \
 
 # ---------------------------------------------------------
 # n8n 2.35.0
+#
+# Permitimos los scripts de instalación necesarios para
+# módulos nativos usados por n8n.
 # ---------------------------------------------------------
 
-RUN npm install -g n8n@2.35.0
+RUN npm install -g n8n@2.35.0 \
+    --allow-scripts=@parcel/watcher,isolated-vm,sqlite3,agent-browser,oracledb,protobufjs,msgpackr-extract,ssh2,@sentry/node-native-stacktrace,@sentry/node-cpu-profiler,@confluentinc/kafka-javascript
 
 # ---------------------------------------------------------
-# Python
+# Entorno virtual Python
 # ---------------------------------------------------------
 
-RUN pip3 install --no-cache-dir \
+RUN python3 -m venv /opt/venv
+
+ENV PATH="/opt/venv/bin:$PATH"
+
+# ---------------------------------------------------------
+# Python packages
+# ---------------------------------------------------------
+
+RUN pip install --no-cache-dir \
     edge-tts \
     requests
 
@@ -66,19 +78,20 @@ RUN mkdir -p /home/node/.n8n && \
     chown -R node:node /opt/scripts
 
 # ---------------------------------------------------------
-# Verificar instalación
+# Verificación
 # ---------------------------------------------------------
 
 RUN node --version && \
     npm --version && \
     python3 --version && \
+    python --version && \
     ffmpeg -version && \
     n8n --version && \
-    python3 -c "import requests; print('requests OK')" && \
-    python3 -c "import edge_tts; print('edge-tts OK')"
+    python -c "import requests; print('requests OK')" && \
+    python -c "import edge_tts; print('edge-tts OK')"
 
 # ---------------------------------------------------------
-# Puerto Render
+# Puerto
 # ---------------------------------------------------------
 
 EXPOSE 10000
