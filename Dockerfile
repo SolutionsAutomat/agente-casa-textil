@@ -3,24 +3,41 @@
 # n8n 2.35.0 + Python + FFmpeg + Edge-TTS
 # =========================================================
 
-FROM n8nio/n8n:2.35.0 AS n8n
-
-FROM node:24.18.1-alpine3.24
+FROM node:24.18.1-bookworm-slim
 
 USER root
+
+# ---------------------------------------------------------
+# Variables
+# ---------------------------------------------------------
+
+ENV NODE_ENV=production
+ENV N8N_RELEASE_TYPE=stable
+ENV N8N_PORT=10000
+ENV N8N_LISTEN_ADDRESS=0.0.0.0
+ENV PORT=10000
+ENV NODE_PATH=/usr/local/lib/node_modules
+ENV SHELL=/bin/sh
 
 # ---------------------------------------------------------
 # Sistema
 # ---------------------------------------------------------
 
-RUN apk add --no-cache \
-    python3 \
-    py3-pip \
-    ffmpeg \
-    ttf-dejavu \
-    tini \
-    ca-certificates \
-    tzdata
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+        ffmpeg \
+        fonts-dejavu \
+        tini \
+        ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------
+# n8n 2.35.0
+# ---------------------------------------------------------
+
+RUN npm install -g n8n@2.35.0
 
 # ---------------------------------------------------------
 # Python
@@ -28,20 +45,7 @@ RUN apk add --no-cache \
 
 RUN pip3 install --no-cache-dir \
     edge-tts \
-    requests \
-    --break-system-packages
-
-# ---------------------------------------------------------
-# n8n
-# ---------------------------------------------------------
-
-COPY --from=n8n \
-    /usr/local/lib/node_modules/n8n \
-    /usr/local/lib/node_modules/n8n
-
-# Crear comando n8n
-RUN mkdir -p /usr/local/bin && \
-    ln -s /usr/local/lib/node_modules/n8n/bin/n8n /usr/local/bin/n8n
+    requests
 
 # ---------------------------------------------------------
 # Scripts Casa Textil
@@ -51,38 +55,22 @@ RUN mkdir -p /opt/scripts
 
 COPY scripts/ /opt/scripts/
 
+RUN chmod -R 755 /opt/scripts
+
 # ---------------------------------------------------------
-# Directorios y permisos
+# Directorios n8n
 # ---------------------------------------------------------
 
 RUN mkdir -p /home/node/.n8n && \
     chown -R node:node /home/node && \
-    chown -R node:node /opt/scripts && \
-    chmod -R 755 /opt/scripts
+    chown -R node:node /opt/scripts
 
 # ---------------------------------------------------------
-# Configuración n8n
-# ---------------------------------------------------------
-
-ENV NODE_ENV=production
-ENV NODE_PATH=/usr/local/lib/node_modules
-ENV N8N_RELEASE_TYPE=stable
-ENV N8N_PORT=10000
-ENV N8N_LISTEN_ADDRESS=0.0.0.0
-ENV PORT=10000
-ENV SHELL=/bin/sh
-
-# ---------------------------------------------------------
-# Directorio de trabajo oficial de n8n
-# ---------------------------------------------------------
-
-WORKDIR /home/node
-
-# ---------------------------------------------------------
-# Verificaciones
+# Verificar instalación
 # ---------------------------------------------------------
 
 RUN node --version && \
+    npm --version && \
     python3 --version && \
     ffmpeg -version && \
     n8n --version && \
@@ -90,7 +78,7 @@ RUN node --version && \
     python3 -c "import edge_tts; print('edge-tts OK')"
 
 # ---------------------------------------------------------
-# Puerto
+# Puerto Render
 # ---------------------------------------------------------
 
 EXPOSE 10000
@@ -105,6 +93,6 @@ USER node
 # Arranque
 # ---------------------------------------------------------
 
-ENTRYPOINT ["tini", "--", "n8n"]
+ENTRYPOINT ["tini", "--"]
 
-CMD ["start"]
+CMD ["n8n", "start"]
