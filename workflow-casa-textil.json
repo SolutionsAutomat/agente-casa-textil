@@ -1,0 +1,541 @@
+{
+  "name": "Agente Casa Textil - Videos Automáticos",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1,4"
+            }
+          ]
+        }
+      },
+      "id": "cron",
+      "name": "Cuándo - Lunes y Jueves 9am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -800,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const hoy = new Date();\nconst temas = [\n  \"tendencias de telas para decorar el hogar esta temporada\",\n  \"tips de cuidado y lavado de telas para que duren años\",\n  \"cómo combinar colores y texturas de telas en cortinas y cojines\",\n  \"usos creativos de telas en el hogar: cabeceros, manteles, tapicería\",\n  \"cómo reconocer telas de buena calidad al comprar\",\n  \"transformaciones de espacios antes y después con telas\"\n];\nconst tema = temas[hoy.getDate() % temas.length];\n\nconst prompt = `Eres el community manager experto de \"Casa Textil\", una tienda física de telas para decoración del hogar en México. Tu audiencia son mujeres y hombres de 28 a 55 años que decoran su casa o emprenden con confección.\n\nHoy es ${hoy.toISOString().slice(0,10)}. Tema sugerido del día: ${tema} (puedes adaptarlo si tienes una idea mejor).\n\nCrea el guion de un video vertical (9:16) de 30 a 40 segundos para Instagram Reels y TikTok.\n\nREGLAS:\n1. Gancho (hook) de máximo 12 palabras que detenga el scroll en los primeros 2 segundos.\n2. Exactamente 5 escenas. En cada escena: \"texto_pantalla\" (máximo 8 palabras, van quemadas en el video) y \"prompt\" (descripción detallada en inglés para un generador de imágenes: sujeto, ambiente, colores, tipo de plano).\n3. \"voz\": guion completo para voz en off en español mexicano neutro, máximo 80 palabras, tono cálido y cercano como entre amigas, sin relleno.\n4. \"hashtags\": entre 8 y 10, mezcla de español e inglés, incluye #CasaTextil.\n5. Cierra con una invitación suave a visitar la tienda (nunca suenes desesperado por ventas).\n\nRESPONDE ÚNICAMENTE con JSON válido (sin markdown, sin explicaciones) con esta estructura exacta:\n{\"tema\":\"...\",\"hook\":\"...\",\"escenas\":[{\"texto_pantalla\":\"...\",\"prompt\":\"...\"}],\"voz\":\"...\",\"hashtags\":\"...\"}`;\n\nreturn [{ json: { prompt } }];"
+      },
+      "id": "prompt",
+      "name": "Prompt Maestro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -580,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={{$env.GEMINI_API_KEY}}",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "body": "={{ JSON.stringify({ contents: [{ parts: [{ text: $json.prompt }] }], generationConfig: { responseMimeType: \"application/json\" } }) }}"
+      },
+      "id": "gemini",
+      "name": "Generar guion con Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -360,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "let raw = $json.candidates[0].content.parts[0].text;\nraw = raw.replace(/```json/g, \"\").replace(/```/g, \"\").trim();\nlet guion;\ntry {\n  guion = JSON.parse(raw);\n} catch (e) {\n  throw new Error(\"Gemini no devolvió JSON válido. Recibido: \" + raw.slice(0, 300));\n}\nguion.fecha = new Date().toISOString().slice(0, 10);\nreturn [{ json: guion }];"
+      },
+      "id": "parse",
+      "name": "Limpiar y parsear guion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -140,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const fs = require(\"fs\");\nconst guion = $input.first().json;\nfs.writeFileSync(\"/opt/scripts/guion.json\", JSON.stringify(guion, null, 2));\nreturn $input.all();"
+      },
+      "id": "guardar",
+      "name": "Guardar guion en disco",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
+        "text": "=🧵 GUION PARA APROBAR - Casa Textil ({{$json.fecha}})\n\n🎬 HOOK: {{$json.hook}}\n\n🎞️ ESCENAS:\n{{$json.escenas.map((e, i) => (i + 1) + '. ' + e.texto_pantalla + '  |  ' + e.prompt).join('\\n')}}\n\n🎙️ VOZ EN OFF:\n{{$json.voz}}\n\n#️⃣ HASHTAGS: {{$json.hashtags}}\n\nResponde APROBAR ✅ para generar el video ahora,\no CAMBIAR: <qué quieres distinto> para regenerar el guion."
+      },
+      "id": "tg1",
+      "name": "Pedir aprobación por Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        300,
+        300
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Bot Telegram Casa Textil"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "tgt",
+      "name": "Escuchar respuesta en Telegram",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -800,
+        700
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Bot Telegram Casa Textil"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.message.text}}",
+              "rightValue": "APROBAR",
+              "operator": {
+                "type": "string",
+                "operation": "contains",
+                "name": "filter.operator.contains"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if1",
+      "name": "¿Respondió APROBAR?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -580,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "combinator": "and",
+          "conditions": [
+            {
+              "leftValue": "={{$json.message.text}}",
+              "rightValue": "CAMBIAR",
+              "operator": {
+                "type": "string",
+                "operation": "contains",
+                "name": "filter.operator.contains"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "if2",
+      "name": "¿Pidió CAMBIOS?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -360,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={{$env.GEMINI_API_KEY}}",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "body": "={{ JSON.stringify({ contents: [{ parts: [{ text: \"El dueño de Casa Textil pidió cambios al guion anterior. Su feedback exacto fue: \" + $json.message.text + \". Genera un guion NUEVO y COMPLETO aplicando ese feedback. Mantén el mismo formato JSON solicitado (tema, hook, 5 escenas con texto_pantalla y prompt, voz, hashtags).\" }] }], generationConfig: { responseMimeType: \"application/json\" } }) }}"
+      },
+      "id": "regen",
+      "name": "Regenerar guion con feedback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -120,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
+        "text": "=No entendí tu respuesta 🤔\nResponde exactamente:\nAPROBAR ✅  (para generar el video)\no\nCAMBIAR: <qué quieres distinto>"
+      },
+      "id": "tgno",
+      "name": "Avisar que no entendí",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -120,
+        1100
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Bot Telegram Casa Textil"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "python3 /opt/scripts/generar_imagenes.py"
+      },
+      "id": "py1",
+      "name": "🐍 1 Generar imágenes",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        -360,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "command": "python3 /opt/scripts/generar_voz.py"
+      },
+      "id": "py2",
+      "name": "🐍 2 Generar voz y subtítulos",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        -140,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "command": "python3 /opt/scripts/montar_video.py"
+      },
+      "id": "py3",
+      "name": "🐍 3 Montar video final",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [
+        80,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const fs = require(\"fs\");\nlet hashtags = \"\";\ntry {\n  const g = JSON.parse(fs.readFileSync(\"/opt/scripts/guion.json\", \"utf8\"));\n  hashtags = g.hashtags || \"\";\n} catch (e) {}\nreturn [{ json: { hashtags } }];"
+      },
+      "id": "hash",
+      "name": "Recuperar hashtags",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        300,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "filePath": "/opt/scripts/video_final.mp4"
+      },
+      "id": "readbin",
+      "name": "Leer video generado",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        520,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
+        "binaryData": true,
+        "binaryProperty": "data",
+        "additionalFields": {
+          "caption": "=🎬 Tu video está listo: {{$json.hashtags}}"
+        }
+      },
+      "id": "tgvideo",
+      "name": "Enviar video por Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        740,
+        500
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Bot Telegram Casa Textil"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
+        "text": "=✅ Proceso completo.\nSúbelo a Buffer (Instagram + TikTok) o aprueba la publicación automática.\n\nDetalle del video:\n{{$json.hashtags}}"
+      },
+      "id": "tgfin",
+      "name": "Aviso final",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        960,
+        500
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Bot Telegram Casa Textil"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const fs = require(\"fs\");\ntry {\n  const g = JSON.parse(fs.readFileSync(\"/opt/scripts/guion.json\", \"utf8\"));\n  const linea = new Date().toISOString() + \";\"\" + (g.tema || \"\") + \"\";\"\" + (g.hook || \"\") + \"\"\\n\";\n  fs.appendFileSync(\"/opt/scripts/historial.csv\", linea);\n} catch (e) {}\nreturn $input.all();"
+      },
+      "id": "hist",
+      "name": "Registrar en historial",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1180,
+        500
+      ]
+    }
+  ],
+  "connections": {
+    "Cuándo - Lunes y Jueves 9am": {
+      "main": [
+        [
+          {
+            "node": "Prompt Maestro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prompt Maestro": {
+      "main": [
+        [
+          {
+            "node": "Generar guion con Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generar guion con Gemini": {
+      "main": [
+        [
+          {
+            "node": "Limpiar y parsear guion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limpiar y parsear guion": {
+      "main": [
+        [
+          {
+            "node": "Guardar guion en disco",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar guion en disco": {
+      "main": [
+        [
+          {
+            "node": "Pedir aprobación por Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Escuchar respuesta en Telegram": {
+      "main": [
+        [
+          {
+            "node": "¿Respondió APROBAR?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Respondió APROBAR?": {
+      "main": [
+        [
+          {
+            "node": "🐍 1 Generar imágenes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "¿Pidió CAMBIOS?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Pidió CAMBIOS?": {
+      "main": [
+        [
+          {
+            "node": "Regenerar guion con feedback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Avisar que no entendí",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Regenerar guion con feedback": {
+      "main": [
+        [
+          {
+            "node": "Limpiar y parsear guion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🐍 1 Generar imágenes": {
+      "main": [
+        [
+          {
+            "node": "🐍 2 Generar voz y subtítulos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🐍 2 Generar voz y subtítulos": {
+      "main": [
+        [
+          {
+            "node": "🐍 3 Montar video final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🐍 3 Montar video final": {
+      "main": [
+        [
+          {
+            "node": "Recuperar hashtags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recuperar hashtags": {
+      "main": [
+        [
+          {
+            "node": "Leer video generado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leer video generado": {
+      "main": [
+        [
+          {
+            "node": "Enviar video por Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar video por Telegram": {
+      "main": [
+        [
+          {
+            "node": "Aviso final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aviso final": {
+      "main": [
+        [
+          {
+            "node": "Registrar en historial",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
